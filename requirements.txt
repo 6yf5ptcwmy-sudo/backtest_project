@@ -4,4 +4,4 @@ plotly
 pykrx
 backtesting
 yfinance
-setuptools
+setuptools==80.9.0
