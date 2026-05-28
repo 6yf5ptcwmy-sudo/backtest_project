@@ -48,6 +48,13 @@ def normalize_ticker(value: str) -> str:
     return str(value).strip().zfill(6)
 
 
+def parse_krx_date(value: str) -> str | None:
+    try:
+        return datetime.strptime(str(value).strip(), "%Y%m%d").strftime("%Y%m%d")
+    except (ValueError, TypeError):
+        return None
+
+
 def to_float(value) -> float:
     if value is None:
         return 0.0
@@ -343,7 +350,16 @@ def run_backtest(data: pd.DataFrame, cash: int, commission: float, short_ma: int
 
 
 def render_backtest(ticker: str, start: str, end: str, cash: int, commission: float, short_ma: int, long_ma: int) -> None:
-    data = fetch_backtest_data(ticker, start, end)
+    start_date = parse_krx_date(start)
+    end_date = parse_krx_date(end)
+    if not start_date or not end_date:
+        st.error("시작일과 종료일은 YYYYMMDD 형식이어야 합니다.")
+        return
+    if start_date > end_date:
+        st.error("시작일은 종료일보다 이전이어야 합니다.")
+        return
+
+    data = fetch_backtest_data(ticker, start_date, end_date)
     if data.empty or len(data) < long_ma:
         st.error("백테스트 데이터가 부족합니다. 기간을 더 길게 설정하세요.")
         return
@@ -494,6 +510,12 @@ with st.sidebar:
     long_ma = st.number_input("장기 이동평균선", value=60, min_value=20)
     commission = st.number_input("수수료", value=0.0015, format="%.4f")
     run = st.button("백테스트 실행", use_container_width=True)
+    if st.button("실시간 연결 종료", use_container_width=True):
+        close_ws(ticker)
+        set_status(ticker, "연결 전", "사용자 요청으로 연결 종료")
+        st.session_state["active_ws_ticker"] = ""
+        st.session_state["disable_live_ticker"] = ticker
+        st.success("실시간 연결을 종료했습니다.")
 
 app_key = config_value("KIS_APP_KEY")
 app_secret = config_value("KIS_APP_SECRET")
@@ -527,10 +549,15 @@ if previous_ticker and previous_ticker != ticker:
     close_ws(previous_ticker)
 st.session_state["active_ws_ticker"] = ticker
 
-try:
-    ensure_realtime_connection(ticker, app_key, app_secret)
-except Exception as exc:
-    set_status(ticker, "연결 실패", str(exc))
+if st.session_state.get("disable_live_ticker") == ticker:
+    st.info("이 종목에 대한 실시간 연결이 중지되었습니다. 다른 종목을 선택하거나 페이지를 새로고침하면 다시 연결됩니다.")
+else:
+    if st.session_state.get("disable_live_ticker") and st.session_state["disable_live_ticker"] != ticker:
+        st.session_state["disable_live_ticker"] = ""
+    try:
+        ensure_realtime_connection(ticker, app_key, app_secret)
+    except Exception as exc:
+        set_status(ticker, "연결 실패", str(exc))
 
 
 @st.fragment(run_every="1s")
