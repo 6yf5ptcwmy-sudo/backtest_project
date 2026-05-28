@@ -4,4 +4,7 @@ plotly
 pykrx
 backtesting
 yfinance
+streamlit-autorefresh
+requests
+websocket-client
 setuptools==80.9.0
